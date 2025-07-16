@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Planejamento de Aportes</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen text-gray-800">
+
+  <div class="max-w-4xl mx-auto p-6">
+
+    <h1 class="text-3xl font-bold text-center mb-6 text-blue-700">📊 Planejamento de Aportes Mensais</h1>
+
+    <!-- FORMULÁRIO DE APORTES -->
+    <div class="bg-white rounded-xl shadow p-6 mb-6">
+      <h2 class="text-xl font-semibold mb-4">Adicionar Aporte</h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block mb-1 font-medium">Valor do Aporte (R$):</label>
+          <input type="number" id="valorAporte" placeholder="Ex: 500" step="0.01"
+                 class="w-full border border-gray-300 rounded p-2">
+        </div>
+        <div>
+          <label class="block mb-1 font-medium">Data:</label>
+          <input type="date" id="dataAporte" class="w-full border border-gray-300 rounded p-2">
+        </div>
+        <div class="flex items-end">
+          <button onclick="adicionarAporte()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded w-full">Adicionar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- META MENSAL -->
+    <div class="bg-white rounded-xl shadow p-6 mb-6">
+      <h2 class="text-xl font-semibold mb-4">Meta Mensal</h2>
+      <div class="flex gap-4 items-end">
+        <div class="flex-1">
+          <label class="block mb-1 font-medium">Valor da Meta (R$):</label>
+          <input type="number" id="metaMensal" placeholder="Ex: 1000" step="0.01"
+                 class="w-full border border-gray-300 rounded p-2">
+        </div>
+        <button onclick="salvarMeta()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">Salvar Meta</button>
+      </div>
+    </div>
+
+    <!-- TABELA DE RESULTADOS -->
+    <div class="bg-white rounded-xl shadow p-6">
+      <h2 class="text-xl font-semibold mb-4">Resultados</h2>
+      <div id="resultado" class="overflow-x-auto text-sm"></div>
+    </div>
+
+  </div>
+
+  <!-- SCRIPT -->
+  <script>
+    let aportes = JSON.parse(localStorage.getItem('aportes') || '[]');
+    let idCounter = parseInt(localStorage.getItem('idCounter') || '1');
+    let meta = parseFloat(localStorage.getItem('metaMensal') || '0');
+
+    document.getElementById('metaMensal').value = meta || '';
+
+    function adicionarAporte() {
+      const valor = parseFloat(document.getElementById('valorAporte').value);
+      const data = document.getElementById('dataAporte').value;
+
+      if (isNaN(valor) || !data) {
+        alert("Informe um valor e uma data válidos.");
+        return;
+      }
+
+      aportes.push({ id: idCounter++, valor, data });
+      salvarLocal();
+      document.getElementById('valorAporte').value = '';
+      document.getElementById('dataAporte').value = '';
+      atualizarTabela();
+    }
+
+    function excluirAporte(id) {
+      aportes = aportes.filter(a => a.id !== id);
+      salvarLocal();
+      atualizarTabela();
+    }
+
+    function salvarMeta() {
+      meta = parseFloat(document.getElementById('metaMensal').value);
+      localStorage.setItem('metaMensal', meta);
+      atualizarTabela();
+    }
+
+    function salvarLocal() {
+      localStorage.setItem('aportes', JSON.stringify(aportes));
+      localStorage.setItem('idCounter', idCounter);
+    }
+
+    function atualizarTabela() {
+      let agrupado = {};
+      let mapaMeses = {};
+      aportes.forEach(aporte => {
+        const dataObj = new Date(aporte.data);
+        const mesAno = dataObj.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+        if (!agrupado[mesAno]) {
+          agrupado[mesAno] = 0;
+          mapaMeses[mesAno] = [];
+        }
+
+        agrupado[mesAno] += aporte.valor;
+        mapaMeses[mesAno].push(aporte);
+      });
+
+      let html = `
+        <table class="w-full table-auto border border-gray-300">
+          <thead class="bg-gray-100">
+            <tr>
+              <th class="p-2 border">Mês</th>
+              <th class="p-2 border">Aportes</th>
+              <th class="p-2 border">Total do Mês</th>
+              <th class="p-2 border">Meta</th>
+              <th class="p-2 border">Status</th>
+              <th class="p-2 border">Acumulado</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      let acumulado = 0;
+      const mesesOrdenados = Object.keys(agrupado).sort((a, b) => {
+        const [m1, y1] = a.split(' de ');
+        const [m2, y2] = b.split(' de ');
+        const d1 = new Date(`${y1}-${converterMesParaNumero(m1)}-01`);
+        const d2 = new Date(`${y2}-${converterMesParaNumero(m2)}-01`);
+        return d1 - d2;
+      });
+
+      mesesOrdenados.forEach(mes => {
+        const total = agrupado[mes];
+        acumulado += total;
+        const detalhes = mapaMeses[mes].map(a =>
+          `R$ ${a.valor.toFixed(2)} em ${formatarData(a.data)} 
+          <button class="ml-2 text-red-600 font-bold" onclick="excluirAporte(${a.id})">🗑️</button>`
+        ).join("<br>");
+
+        const status = meta > 0
+          ? (total >= meta
+              ? `<span class="text-green-600 font-semibold">✅ Atingida</span>`
+              : `<span class="text-red-600 font-semibold">❌ Não atingida</span>`)
+          : "-";
+
+        html += `
+          <tr class="border-t">
+            <td class="p-2 border">${mes}</td>
+            <td class="p-2 border text-left">${detalhes}</td>
+            <td class="p-2 border">R$ ${total.toFixed(2)}</td>
+            <td class="p-2 border">${meta ? 'R$ ' + meta.toFixed(2) : '-'}</td>
+            <td class="p-2 border">${status}</td>
+            <td class="p-2 border">R$ ${acumulado.toFixed(2)}</td>
+          </tr>`;
+      });
+
+      html += '</tbody></table>';
+      document.getElementById('resultado').innerHTML = html;
+    }
+
+    function converterMesParaNumero(mesExtenso) {
+      const meses = {
+        'janeiro': '01', 'fevereiro': '02', 'março': '03', 'abril': '04',
+        'maio': '05', 'junho': '06', 'julho': '07', 'agosto': '08',
+        'setembro': '09', 'outubro': '10', 'novembro': '11', 'dezembro': '12'
+      };
+      return meses[mesExtenso.toLowerCase()];
+    }
+
+    function formatarData(data) {
+      const d = new Date(data);
+      return d.toLocaleDateString('pt-BR');
+    }
+
+    atualizarTabela();
+  </script>
+
+</body>
+</html>
